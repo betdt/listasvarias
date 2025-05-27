@@ -1,0 +1,73 @@
+
+# Crear carpeta si no existe
+$carpeta = "C:\listas"
+if (-not (Test-Path $carpeta)) {
+    New-Item -ItemType Directory -Path $carpeta
+}
+
+# Lista de URLs
+$urls = @(
+    "https://iptv-org.github.io/iptv/countries/es.m3u",
+    "https://iptv-org.github.io/iptv/countries/cl.m3u",
+    "https://iptv-org.github.io/iptv/subdivisions/cl-ar.m3u",
+    "https://iptv-org.github.io/iptv/subdivisions/cl-li.m3u",
+    "https://iptv-org.github.io/iptv/subdivisions/cl-nb.m3u",
+    "https://raw.githubusercontent.com/chwlibre/iptv/refs/heads/master/casterlist.m3u",
+    "https://raw.githubusercontent.com/chwlibre/iptv/refs/heads/master/list1.m3u",
+    "https://raw.githubusercontent.com/matheusvasconcelosufjf/LISTA-IPTV/refs/heads/master/LISTA%20FLUIDA",
+    "https://raw.githubusercontent.com/LeoLaRata35/IPTVPY/refs/heads/main/PY1.m3u",
+    "https://raw.githubusercontent.com/delmitv/lista-IPTV/refs/heads/main/lista.m3u",
+    "https://raw.githubusercontent.com/Edgar-Reyna/ListaIPTV/refs/heads/main/FULLTV.M3U",
+    "https://raw.githubusercontent.com/Nicarochan13/IPTV-Nicarochan13/refs/heads/main/IPTVPremium2",
+    "https://raw.githubusercontent.com/Nicarochan13/IPTV-Nicarochan13/refs/heads/main/ListaIPTVPremium"
+)
+
+$temporal = Join-Path $carpeta "temporal"
+if (-not (Test-Path $temporal)) {
+    New-Item -ItemType Directory -Path $temporal
+}
+
+# Descargar listas
+$i = 0
+foreach ($url in $urls) {
+    $i++
+    $destino = Join-Path $temporal ("lista$i.m3u")
+    Invoke-WebRequest -Uri $url -OutFile $destino -UseBasicParsing -ErrorAction SilentlyContinue
+}
+
+# Unir y eliminar duplicados
+$salida = Join-Path $carpeta "lista_unificada.m3u"
+$canalesPorGrupo = @{}
+$urlsUnicas = @{}
+
+foreach ($archivo in Get-ChildItem -Path $temporal -Filter *.m3u) {
+    $lineas = Get-Content $archivo.FullName
+    for ($i = 0; $i -lt $lineas.Count; $i++) {
+        if ($lineas[$i] -like "#EXTINF*") {
+            $info = $lineas[$i]
+            $stream = $lineas[$i + 1]
+            if (-not $urlsUnicas.ContainsKey($stream)) {
+                $urlsUnicas[$stream] = $true
+                $grupo = "Sin Grupo"
+                if ($info -match 'group-title="([^"]+)"') {
+                    $grupo = $matches[1]
+                }
+                if (-not $canalesPorGrupo.ContainsKey($grupo)) {
+                    $canalesPorGrupo[$grupo] = @()
+                }
+                $canalesPorGrupo[$grupo] += $info
+                $canalesPorGrupo[$grupo] += $stream
+            }
+        }
+    }
+}
+
+# Escribir el archivo final
+"#EXTM3U" | Out-File $salida -Encoding utf8
+
+foreach ($grupo in ($canalesPorGrupo.Keys | Sort-Object)) {
+    "# --- $grupo ---" | Out-File $salida -Encoding utf8 -Append
+    $canalesPorGrupo[$grupo] | Out-File $salida -Encoding utf8 -Append
+}
+
+Write-Host "Lista IPTV agrupada por categoría creada en: $salida"
